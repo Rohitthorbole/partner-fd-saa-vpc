@@ -1,2 +1,8 @@
 # partner-fd-saa-vpc
-Repo for SAA-C03 notes+practicals+labs
+
+AWS Solutions Architect Associate (SAA-C03) notes, practicals, and labs.
+
+## Notes
+
+- [Amazon VPC learning notes](vpc.txt)
+- [Internet Gateway learning notes](internet-gateway.txt)
