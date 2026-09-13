@@ -1,0 +1,174 @@
+# Amazon VPC - Learning Notes
+
+## 1. What is a VPC?
+
+Amazon Virtual Private Cloud (VPC) is a logically isolated network inside an
+AWS Region. It lets you define the network layout for AWS resources, including
+IP ranges, subnets, routing, and traffic controls.
+
+A VPC is regional. A single VPC cannot span multiple Regions, although it can
+contain subnets in multiple Availability Zones within that Region.
+
+## 2. Types of VPC
+
+### Default VPC
+
+AWS creates a default VPC automatically in each Region for a new account. It
+normally includes:
+
+- A default subnet in each Availability Zone.
+- An Internet Gateway attached to the VPC.
+- A route table with a route to the Internet Gateway.
+- A default security group, network ACL, and DHCP options set.
+
+The exact Availability Zones and subnet CIDR blocks depend on the Region. A
+default VPC is convenient for quick experiments, but production environments
+usually use a custom design so that the address ranges and routing are under
+explicit control.
+
+### Custom VPC
+
+A custom VPC is created and configured by the user. It is the usual choice for
+production workloads because it allows deliberate planning of:
+
+- The VPC CIDR block.
+- Public and private subnets.
+- Availability Zone placement.
+- Internet, NAT, VPN, and other routes.
+- Security boundaries and connectivity to other networks.
+
+## 3. Important VPC Components
+
+### CIDR block
+
+The VPC CIDR block defines the private IPv4 address range available to the VPC.
+For example, `10.0.0.0/16` provides 65,536 IPv4 addresses before AWS reserves
+some addresses in each subnet. Subnet CIDR blocks must be contained within the
+VPC CIDR block and must not overlap one another.
+
+### Subnet
+
+A subnet is a smaller IP range inside a VPC. Each subnet belongs to exactly one
+Availability Zone.
+
+- A **public subnet** has a route to an Internet Gateway. A resource also needs
+	a public IPv4 address or Elastic IP to communicate directly with the
+	internet.
+- A **private subnet** does not have a direct route to an Internet Gateway. It
+	can use a NAT Gateway in a public subnet for outbound internet access.
+
+For high availability, place corresponding subnets in at least two
+Availability Zones.
+
+### Route table
+
+A route table controls where traffic from a subnet is sent. Each subnet is
+associated with one route table at a time. Common targets include an Internet
+Gateway, NAT Gateway, VPC peering connection, Transit Gateway, or VPN
+connection.
+
+### Internet Gateway
+
+An Internet Gateway is attached to a VPC and enables internet connectivity for
+resources in subnets whose route table contains a route such as
+`0.0.0.0/0 -> Internet Gateway`. The route alone is not enough: security groups,
+network ACLs, and public addressing must also allow the traffic.
+
+### NAT Gateway
+
+A NAT Gateway allows resources in private subnets to initiate outbound IPv4
+connections to the internet without accepting unsolicited inbound connections
+from the internet. It is placed in a public subnet and normally uses an
+Elastic IP. For better Availability Zone resilience, consider a NAT Gateway in
+each required Availability Zone.
+
+### Security group
+
+A security group is a stateful, resource-level virtual firewall. It supports
+allow rules only. Return traffic is automatically allowed when the original
+connection is allowed.
+
+### Network ACL
+
+A network ACL is a stateless, subnet-level firewall. It supports both allow and
+deny rules, and inbound and outbound return traffic must be permitted
+explicitly.
+
+### Elastic Network Interface (ENI)
+
+An ENI is a virtual network interface attached to a resource in a subnet. It
+has a private IP address, and it can have security groups and one or more
+additional private or public addresses depending on the resource.
+
+## 4. AWS Scope and Quotas
+
+- Most AWS resources are created in a Region, and resources in different
+	Regions are separate unless an AWS service provides cross-Region support.
+- Availability Zones are isolated locations inside a Region. VPC subnets are
+	tied to one Availability Zone.
+- AWS applies service quotas to VPC resources. A commonly encountered starting
+	quota is **5 VPCs per Region per account**, but quotas can vary and may be
+	adjustable. Always verify the current quota in the AWS Service Quotas
+	console or documentation instead of treating 5 as a universal maximum.
+
+## 5. Private IPv4 Address Ranges
+
+For internal networks, use RFC 1918 private IPv4 ranges:
+
+| Range | CIDR notation | Approximate address count |
+|---|---|---:|
+| `10.0.0.0` - `10.255.255.255` | `10.0.0.0/8` | 16.7 million |
+| `172.16.0.0` - `172.31.255.255` | `172.16.0.0/12` | 1.0 million |
+| `192.168.0.0` - `192.168.255.255` | `192.168.0.0/16` | 65,536 |
+
+Choose a range that will not overlap with on-premises networks or other VPCs
+that may later connect through peering, Transit Gateway, VPN, or Direct
+Connect. Overlapping CIDR blocks make routing between those networks difficult
+or impossible.
+
+## 6. AWS-Reserved Addresses in a Subnet
+
+AWS reserves five IPv4 addresses in every subnet. For a subnet such as
+`10.0.0.0/24`, the first four addresses and the final address are unavailable
+for general use:
+
+- `10.0.0.0`: network address.
+- `10.0.0.1`: VPC router.
+- `10.0.0.2`: Amazon-provided DNS server.
+- `10.0.0.3`: reserved for future use.
+- `10.0.0.255`: network broadcast address (broadcast is not supported, but the
+	address remains reserved).
+
+Therefore a `/24` subnet has 251 usable IPv4 addresses, not 256.
+
+## 7. Simple Custom VPC Layout
+
+Example design for a VPC using `10.0.0.0/16`:
+
+| Subnet | CIDR | Availability Zone | Purpose |
+|---|---|---|---|
+| Public A | `10.0.1.0/24` | AZ-a | Load balancer, NAT Gateway |
+| Public B | `10.0.2.0/24` | AZ-b | Load balancer, NAT Gateway |
+| Private A | `10.0.11.0/24` | AZ-a | Application servers |
+| Private B | `10.0.12.0/24` | AZ-b | Application servers |
+
+Typical traffic flow:
+
+1. Internet traffic reaches a public load balancer through an Internet Gateway.
+2. The load balancer forwards application traffic to private-subnet servers.
+3. Private-subnet servers use a NAT Gateway for outbound updates or downloads.
+4. Security groups restrict traffic between the load balancer, application,
+	 and database tiers.
+
+## 8. Exam and Design Reminders
+
+- A subnet is public because of its route to an Internet Gateway, not because
+	of its name.
+- An Internet Gateway is attached to a VPC; a NAT Gateway is created in a
+	subnet.
+- Security groups are stateful and allow-only; network ACLs are stateless and
+	support allow and deny rules.
+- Avoid overlapping CIDR ranges before connecting networks.
+- Use multiple Availability Zones for resilience.
+- A private subnet can still have outbound internet access through NAT; it is
+	not automatically isolated from all outbound connectivity.
