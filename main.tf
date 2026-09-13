@@ -161,3 +161,49 @@ import {
   id = "subnet-07d2b7e9d016d1464/rtb-017fb28da2e3c41d7"
   to = aws_route_table_association.subnet2_association
 }
+
+#nacl 
+
+resource "aws_network_acl" "nacl" {
+  vpc_id = aws_vpc.main.id
+  tags = {
+    Name = "my-nacl"
+  }
+}
+
+import {
+  id = "acl-0c368cd17777951d9"
+  to = aws_network_acl.nacl
+}
+
+resource "aws_network_acl_rule" "inbound_http" {
+  network_acl_id = aws_network_acl.nacl.id
+  rule_number    = 100
+  egress         = false
+  protocol       = "tcp"
+  rule_action    = "allow"
+  cidr_block     = "0.0.0.0/0"
+  from_port      = 80
+  to_port        = 80
+}
+
+import {
+  id = "acl-0c368cd17777951d9:100:ingress"
+  to = aws_network_acl_rule.inbound_http
+}
+
+resource "aws_network_acl_rule" "outbound_ephemeral" {
+  network_acl_id = aws_network_acl.nacl.id
+  rule_number    = 100
+  egress         = true
+  protocol       = "tcp"
+  rule_action    = "allow"
+  cidr_block     = "0.0.0.0/0"
+  from_port      = 1024
+  to_port        = 65535
+}
+
+import {
+  id = "acl-0c368cd17777951d9:100:egress"
+  to = aws_network_acl_rule.outbound_ephemeral
+}
