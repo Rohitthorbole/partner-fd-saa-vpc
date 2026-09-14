@@ -1,0 +1,492 @@
+# AWS VPC — SAA-C03 Quick Revision Notes
+
+## 1. VPC Basics 🧱
+
+* **VPC** = logically isolated network in AWS.
+* **VPC CIDR** → defines IP address range.
+* VPC CIDRs **cannot overlap** when you need connectivity such as peering/TGW.
+* **Subnet = AZ-specific**.
+* **VPC = Regional**.
+* A subnet is either **public or private based on routing**, not its name.
+
+### 🎯 Remember
+
+> **Public subnet = route to Internet Gateway.**
+> **Private subnet = no direct route to Internet Gateway.**
+
+---
+
+# 2. Route Tables ⭐
+
+Route table decides:
+
+> **Where should this packet go?**
+
+Common routes:
+
+```text
+0.0.0.0/0 → IGW       → Internet
+0.0.0.0/0 → NAT       → Outbound internet from private subnet
+10.1.0.0/16 → pcx     → VPC Peering
+0.0.0.0/0 → tgw       → Transit Gateway
+S3 prefix → vpce      → Gateway Endpoint
+```
+
+### 🎯 Remember
+
+**Most specific route wins.**
+
+---
+
+# 3. Internet Gateway (IGW)
+
+Used for:
+
+> **VPC ↔ Internet**
+
+Public EC2 generally needs:
+
+* Public/Elastic IP
+* Route to IGW
+* SG/NACL allowing traffic
+
+### 🎯 Remember
+
+**IGW is not used to provide internet access directly to private EC2.**
+
+---
+
+# 4. NAT Gateway ⭐⭐⭐
+
+Used for:
+
+> **Private subnet → Internet**
+
+```text
+Private EC2
+ ↓
+NAT Gateway
+ ↓
+Internet Gateway
+ ↓
+Internet
+```
+
+* NAT Gateway lives in a **public subnet**.
+* NAT Gateway requires an **Elastic IP** for IPv4 internet access.
+* Allows **outbound** connections.
+* Internet cannot directly initiate connections to private EC2 through NAT.
+
+### HA
+
+For multi-AZ architecture:
+
+> **NAT Gateway per AZ**
+
+### 🎯 Exam trap
+
+**Private EC2 + internet access + no public IP → NAT Gateway**
+
+---
+
+# 5. VPC Peering ⭐⭐⭐
+
+Used for:
+
+> **VPC ↔ VPC**
+
+* Private connectivity.
+* Can be same or different AWS accounts.
+* Can be same or different Regions.
+* CIDRs must not overlap.
+* **NOT transitive.**
+
+```text
+A ── B ── C
+
+A ❌→ C
+```
+
+Need direct:
+
+```text
+A ── C
+```
+
+### 🎯 Remember
+
+> **Peering = point-to-point**
+
+Small/simple connectivity → Peering.
+
+---
+
+# 6. Transit Gateway ⭐⭐⭐
+
+Used for:
+
+> **Many VPCs / networks → centralized connectivity**
+
+```text
+       VPC
+        |
+VPC ─ TGW ─ VPC
+        |
+     On-Prem
+```
+
+Good for:
+
+* Many VPCs
+* Multiple AWS accounts
+* Centralized routing
+* Hybrid connectivity
+* Large-scale architecture
+
+### 🎯 Remember
+
+> **TGW = network hub**
+
+Peering = direct
+TGW = centralized
+
+---
+
+# 7. VPC Endpoints ⭐⭐⭐
+
+Used for:
+
+> **Private connectivity from VPC to AWS services**
+
+Main types:
+
+```text
+VPC Endpoint
+ ├── Gateway
+ └── Interface
+```
+
+---
+
+# 8. Gateway Endpoint ⭐⭐⭐
+
+Supports:
+
+* **S3**
+* **DynamoDB**
+
+Uses **route tables**.
+
+No ENI.
+
+No NAT required.
+
+No IGW required.
+
+### 🎯 MUST REMEMBER
+
+> **S3 + DynamoDB → Gateway Endpoint**
+
+---
+
+# 9. Interface Endpoint ⭐⭐⭐
+
+Used for many AWS services such as:
+
+* Secrets Manager
+* SQS
+* KMS
+* Systems Manager
+* CloudWatch
+* ECR, etc.
+
+Creates:
+
+> **ENI + private IP**
+
+Uses **AWS PrivateLink**.
+
+Can use **security groups**.
+
+### 🎯 MUST REMEMBER
+
+> **Other supported AWS services → Interface Endpoint**
+
+---
+
+# 10. AWS PrivateLink ⭐⭐⭐
+
+Used when:
+
+> **A provider wants to privately expose a specific service to consumers.**
+
+Example:
+
+```text
+Consumer VPC
+     ↓
+Interface Endpoint
+     ↓
+PrivateLink
+     ↓
+Endpoint Service
+     ↓
+NLB
+     ↓
+Provider application
+```
+
+Excellent for:
+
+* SaaS providers
+* Cross-account service access
+* Many consumer VPCs
+* Avoiding VPC peering
+
+### 🎯 Remember
+
+> **PrivateLink = service-level private connectivity**
+
+Not full VPC-to-VPC connectivity.
+
+---
+
+# 11. DNS in VPC ⭐⭐
+
+Amazon-provided DNS:
+
+* **Route 53 Resolver**
+* VPC DNS resolution enabled by default.
+
+Important concepts:
+
+* **Private Hosted Zone** → internal/private DNS.
+* **Public Hosted Zone** → internet DNS.
+* **Private DNS for Interface Endpoints** → lets applications use normal AWS service DNS names while traffic goes through the endpoint.
+
+### 🎯 Remember
+
+> Private DNS + Interface Endpoint → private access using normal service hostname.
+
+---
+
+# 12. Security Groups ⭐⭐⭐
+
+**Stateful**
+
+If inbound traffic is allowed:
+
+> Return traffic is automatically allowed.
+
+* Attached to ENI/resource.
+* Allow rules only.
+* Can reference other SGs.
+
+### 🎯 Remember
+
+> **SG = Stateful + Allow only**
+
+---
+
+# 13. Network ACL ⭐⭐⭐
+
+**Stateless**
+
+Inbound and outbound rules evaluated separately.
+
+* Associated with **subnet**.
+* Supports **Allow + Deny**.
+* Rule numbers matter.
+* First matching rule wins.
+
+### 🎯 Remember
+
+> **NACL = Stateless + Allow/Deny + Subnet**
+
+---
+
+# 14. Security Group vs NACL
+
+|            | Security Group    | NACL                   |
+| ---------- | ----------------- | ---------------------- |
+| Level      | ENI/resource      | Subnet                 |
+| Stateful   | ✅                 | ❌                      |
+| Rules      | Allow             | Allow + Deny           |
+| Rule order | No                | Yes                    |
+| Common use | Instance security | Subnet-level filtering |
+
+### 🧠 Memory
+
+> **SG = Stateful**
+> **NACL = Stateless**
+
+---
+
+# 15. IPv4 / IPv6 ⭐⭐
+
+### IPv4
+
+Private ranges:
+
+```text
+10.0.0.0/8
+172.16.0.0/12
+192.168.0.0/16
+```
+
+### IPv6
+
+AWS VPC can use IPv6 addressing.
+
+Important:
+
+> **NAT Gateway is for IPv4.**
+
+For IPv6 internet connectivity, commonly use:
+
+> **Egress-only Internet Gateway**
+
+### 🎯 Remember
+
+**IPv4 outbound private → NAT Gateway**
+
+**IPv6 outbound-only → Egress-only IGW**
+
+---
+
+# 16. Egress-Only Internet Gateway
+
+Used for:
+
+> **IPv6 outbound internet traffic**
+
+Allows:
+
+```text
+Private IPv6 resource
+       ↓
+Internet
+```
+
+Blocks unsolicited inbound connections.
+
+### 🎯 Remember
+
+> **Egress-only IGW = IPv6 equivalent concept for outbound-only access**
+
+---
+
+# 17. VPC Flow Logs ⭐⭐
+
+Captures information about:
+
+> **Network traffic flowing through VPC interfaces.**
+
+Useful for:
+
+* Troubleshooting
+* Security analysis
+* Detecting rejected traffic
+
+Can publish to:
+
+* CloudWatch Logs
+* S3
+
+### 🎯 Remember
+
+> **Flow Logs = visibility, NOT traffic filtering.**
+
+---
+
+# 18. DHCP Options Set
+
+Controls DHCP-related configuration such as:
+
+* DNS servers
+* Domain name
+
+Useful when integrating VPC with custom DNS/on-prem environments.
+
+### 🎯 Remember
+
+> **DHCP Options → DNS/domain configuration**
+
+---
+
+# 19. VPC Limits / Scaling
+
+### Peering
+
+```text
+Many VPCs
+   ↓
+Peering mesh becomes difficult
+```
+
+→ **Transit Gateway**
+
+### 🎯 Remember
+
+> **Don't build a giant peering mesh when centralized routing is required.**
+
+---
+
+# 🔥 SAA-C03 Connectivity Decision Tree
+
+This is the **most important revision section**.
+
+### What are you connecting?
+
+```text
+              What needs connectivity?
+                       │
+          ┌────────────┼─────────────┐
+          │            │             │
+       VPC↔VPC     VPC→AWS       Service→
+                    Service       Consumers
+          │            │             │
+      ┌───┴───┐    ┌───┴────┐   PrivateLink
+      │       │    │        │
+    Small   Many  S3/DDB   Other
+      │       │    │        │
+   Peering   TGW Gateway  Interface
+```
+
+---
+
+# 🚨 Top SAA-C03 "RMRMBER" List
+
+Memorize these:
+
+1. **Public subnet → route to IGW**
+2. **Private subnet → outbound internet → NAT Gateway**
+3. **NAT Gateway → public subnet**
+4. **NAT Gateway → IPv4**
+5. **IPv6 outbound → Egress-only IGW**
+6. **VPC Peering → non-transitive**
+7. **Peering → CIDRs cannot overlap**
+8. **Many VPCs → Transit Gateway**
+9. **S3/DynamoDB → Gateway Endpoint**
+10. **Other supported AWS services → Interface Endpoint**
+11. **Interface Endpoint → ENI + private IP**
+12. **Private service to many consumers → PrivateLink**
+13. **Security Group → Stateful + Allow**
+14. **NACL → Stateless + Allow/Deny**
+15. **Most specific route wins**
+16. **Flow Logs → monitoring/troubleshooting, not filtering**
+17. **VPC = Regional**
+18. **Subnet = AZ-specific**
+19. **PrivateLink = service-level connectivity**
+20. **TGW = network-level centralized connectivity**
+
+### 🧠 One final mental model
+
+> **Peering connects VPCs.**
+> **TGW connects networks at scale.**
+> **Endpoints connect VPCs to AWS services privately.**
+> **Gateway = S3/DynamoDB.**
+> **Interface = ENI/PrivateLink.**
+> **PrivateLink exposes a specific service privately.**
+> **NAT = private IPv4 → internet.**
+> **IGW = VPC ↔ internet.**
